@@ -12,7 +12,14 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: j5
+            artifact: pkg_ms-MY_j5.zip
+          - target: j6
+            artifact: pkg_ms-MY_j6.zip
+    runs-on: windows-latest
 
     steps:
       - name: Checkout repository
@@ -20,30 +27,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get version from pkg_ms-MY.xml
-        id: version
+      - name: Build language pack (${{ matrix.target }})
         run: |
-          VERSION=$(grep -oP '<version>\K[^<]+' pkg_ms-MY.xml)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Package version: $VERSION"
+          ./build.ps1 -ConfigPath build/build.config.json
 
-      - name: Build language pack
+      - name: Verify target artifact
+        shell: pwsh
         run: |
-          if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
-            php build/build.php --lpackages --v --tagversion "${{ github.ref_name }}"
-          else
-            php build/build.php --lpackages --v
-          fi
+          $path = "dist/${{ matrix.artifact }}"
+          if (-not (Test-Path $path) -or (Get-Item $path).Length -le 0) { throw "Artifact ontbreekt: $path" }
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ms-MY_joomla_lang_full_${{ steps.version.outputs.version }}
-          path: build/tmp/packages/*.zip
+          name: ${{ matrix.target }}-language-pack
+          path: dist/${{ matrix.artifact }}
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'j5'
         uses: softprops/action-gh-release@v2
         with:
-          files: build/tmp/packages/*.zip
+          files: dist/*.zip
           generate_release_notes: true
